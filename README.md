@@ -40,11 +40,11 @@ $ python ./script/base_imgenet20k.py
 ![ex_screenshot](./imgs/19.jpg){: width="256" height="256"}
 ![ex_screenshot](./imgs/38.jpg){: width="256" height="256"} -->
 
-<img src="./imgs/5.jpg" width="300" height="300">
-<img src="./imgs/14.jpg" width="300" height="300">
+<img src="./imgs/5.jpg" width="200" height="200">
+<img src="./imgs/14.jpg" width="200" height="200">
 
-<img src="./imgs/19.jpg" width="300" height="300">
-<img src="./imgs/38.jpg" width="300" height="300">
+<img src="./imgs/19.jpg" width="200" height="200">
+<img src="./imgs/38.jpg" width="200" height="200">
 
 
 
