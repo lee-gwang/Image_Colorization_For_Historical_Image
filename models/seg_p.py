@@ -1,7 +1,7 @@
 import torch.nn as nn
 import segmentation_models_pytorch as smp
 import torch
-
+import torch.nn.functional as F
 
 # ------------------------
 #  Model
@@ -31,9 +31,12 @@ class LABModel(nn.Module):
         super().__init__()
         self.model = model
         self.CFG = CFG
+        self.upsample = nn.Upsample(scale_factor=4)
     
     def forward(self, x):
-        return self.model(x)
+        #x = F.interpolate(x, scale_factor=1/4, mode='bilinear')
+        x = self.model(x)
+        return x#self.upsample(x)
 
 def build_model(CFG, encoder, decoder):
     

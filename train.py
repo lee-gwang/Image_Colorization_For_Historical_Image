@@ -44,8 +44,8 @@ warnings.filterwarnings("ignore")
 import wandb
 import segmentation_models_pytorch as smp
 import math
-from dataloader import BuildDataset
-from utils import load_data, init_logger
+from dataloader import ImageNetDataset, ActivityDataset
+from utils.utils import load_data, init_logger
 
 # model
 from models.seg_p import build_model
@@ -53,9 +53,10 @@ from models.seg_p import build_model
 import argparse
 
 parser = argparse.ArgumentParser(description='Script of SKT Colorization')
-parser.add_argument('--gpu', '-gpu', type=str, default='0', help='gpu')
+parser.add_argument('--dataset', '-dt', type=str, default='activitynet_384', help='activitynet/imagenet20k')
+parser.add_argument('--gpu', '-gpu', type=str, default='2,3,4,5', help='gpu')
 
-parser.add_argument('--batch_size', '-bs', type=int, default=128)
+parser.add_argument('--batch_size', '-bs', type=int, default=256)
 parser.add_argument('--epochs', '-e', type=int, default=50)
 
 # related models
@@ -71,7 +72,6 @@ parser.add_argument('--scheduler', type=str, default='CosineAnnealingWarmRestart
 # else
 parser.add_argument('--debug', action='store_true', help='debug')
 parser.add_argument('--wandb', '-wb', action='store_true', help='use wandb')
-parser.add_argument('--exp_name', '-exp', type=str, default='imagenet_sample20k', help='experiments name')
 parser.add_argument('--exp_comment', '-expc', type=str, default='version0', help='experiments folder comment')
 parser.add_argument('--save_img', action='store_true', help='save images')
 
@@ -81,13 +81,14 @@ args = parser.parse_args()
 
 
 class CFG:
+    dataset       = args.dataset
+    amp           = True
     seed          = 101
     debug         = args.debug # set debug=False for Full Training
     wandb         = args.wandb
-    exp_name      = args.exp_name #[2.5D, 5D_1S]
     model_name    = ['Unet'] # decoder
-    backbone      = [ 'efficientnet-b0'] # encoder # LeViT_UNet_384 #efficientnet-b2 # 'se_resnext50_32x4d'
-    add_comment   = f'{exp_name}-sample30-inputL-debug3'#'negative-5k-bs32'
+    backbone      = [ args.backbone] # encoder # LeViT_UNet_384 #efficientnet-b2 # 'se_resnext50_32x4d'
+    add_comment   = f'{dataset}-{args.exp_comment}'#'negative-5k-bs32'
 
     #comment       = f'{model_name}-{backbone}-320x384'
     num_channel   = 1
@@ -116,6 +117,7 @@ class CFG:
     folds         = [0]
     gpu           = args.gpu
     save_img      = args.save_img #True/False # save valid predict images
+    num_workers   = 8
     #wb_key        = '370d7a23c0cf0998cc65127c6a7bf00180540617'
     
 def set_seed(seed = 42):
@@ -126,7 +128,7 @@ def set_seed(seed = 42):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     # When running on the CuDNN backend, two further options must be set
-    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.deterministic = False
     torch.backends.cudnn.benchmark = True
     # Set a fixed value for the hash seed
     os.environ['PYTHONHASHSEED'] = str(seed)
@@ -185,28 +187,37 @@ def train_one_epoch(model, optimizer, scheduler, dataloader, device, epoch):
     criterion = loss_fn(CFG)
     pbar = tqdm(enumerate(dataloader), total=len(dataloader), desc='Train ')
     for step, (gray_imgs, rgb_imgs) in pbar:         
-        gray_imgs = gray_imgs.to(device, dtype=torch.float)
-        rgb_imgs  = rgb_imgs.to(device, dtype=torch.float)
+        gray_imgs = gray_imgs.to(device)#, dtype=torch.float)
+        rgb_imgs  = rgb_imgs.to(device)#, dtype=torch.float)
         
         batch_size = gray_imgs.size(0)
+
+        # zero the parameter gradients
+        optimizer.zero_grad()
+        if CFG.amp:
+            with amp.autocast(enabled=True):
+                y_pred = model(gray_imgs)
+                y_pred = torch.cat([gray_imgs,y_pred], 1)
+
+                loss   = criterion(y_pred, rgb_imgs)
+                loss   = loss / CFG.n_accumulate
+            
+            scaler.scale(loss).backward()
         
-        with amp.autocast(enabled=True):
+            if (step + 1) % CFG.n_accumulate == 0:
+                scaler.step(optimizer)
+                scaler.update()
+        else:
             y_pred = model(gray_imgs)
             y_pred = torch.cat([gray_imgs,y_pred], 1)
 
             loss   = criterion(y_pred, rgb_imgs)
             loss   = loss / CFG.n_accumulate
-            
-        scaler.scale(loss).backward()
-    
-        if (step + 1) % CFG.n_accumulate == 0:
-            scaler.step(optimizer)
-            scaler.update()
 
-            # zero the parameter gradients
-            optimizer.zero_grad()
+            loss.backward()
+            if (step + 1) % CFG.n_accumulate == 0:
+                optimizer.step()
 
-            
                 
         running_loss += (loss.item() * batch_size)
         dataset_size += batch_size
@@ -243,8 +254,8 @@ def valid_one_epoch(model, dataloader, device, epoch):
         norm_img[:,1:,:,:] = norm_img[:,1:,:,:]*110.
         return norm_img
     for step, (gray_imgs, rgb_imgs) in pbar:        
-        gray_imgs  = gray_imgs.to(device, dtype=torch.float)
-        rgb_imgs   = rgb_imgs.to(device, dtype=torch.float)
+        gray_imgs  = gray_imgs.to(device)#, dtype=torch.float)
+        rgb_imgs   = rgb_imgs.to(device)#, dtype=torch.float)
         
         batch_size = gray_imgs.size(0)
         
@@ -329,26 +340,19 @@ def run_training(model, df, run, device, fold, LOGGER):
         train_df = train_df.head(32*5)
         valid_df = valid_df.head(32*3)
     # new_aug 
-    data_transforms = {
-    "train": A.Compose([
-        A.HorizontalFlip(p=0.5),
 
-        ToTensorV2(transpose_mask=True)
-        ], p=1.0),
-    
-    "valid": A.Compose([
-        ToTensorV2(transpose_mask=True)
-        ], p=1.0)
-        }
-
-    train_dataset = BuildDataset(train_df, transforms=data_transforms['train'])
-    valid_dataset = BuildDataset(valid_df, transforms=data_transforms['valid'])
-
+    if CFG.dataset == 'imagenet':
+        train_dataset = ImageNetDataset(train_df, type='train')
+        valid_dataset = ImageNetDataset(valid_df, type='valid')
+    else:
+        train_dataset = ActivityDataset(train_df, type='train')
+        valid_dataset = ActivityDataset(valid_df, type='valid')
+        
 
     train_loader = DataLoader(train_dataset, batch_size=CFG.train_bs if not CFG.debug else 20, 
-                              num_workers=4, shuffle=True, pin_memory=True, drop_last=False)
+                              num_workers=CFG.num_workers, shuffle=True, pin_memory=True, drop_last=False)
     valid_loader = DataLoader(valid_dataset, batch_size=CFG.valid_bs if not CFG.debug else 20, 
-                              num_workers=4, shuffle=False, pin_memory=True)
+                              num_workers=CFG.num_workers, shuffle=False, pin_memory=True)
     
     # optimizer
     optimizer = get_optimizer(model, CFG)
@@ -430,7 +434,7 @@ def run_training(model, df, run, device, fold, LOGGER):
             os.makedirs(os.path.join(CFG.OUTPUT_DIR, f'epoch{epoch}'),exist_ok=True)
             for n, show_img in enumerate(y_pred):
                 show_img = cv2.cvtColor(show_img, cv2.COLOR_LAB2RGB)
-                show_img = cv2.cvtColor(show_img, cv2.COLOR_BGR2RGB)
+                # show_img = cv2.cvtColor(show_img, cv2.COLOR_BGR2RGB)
                 cv2.imwrite(os.path.join(CFG.OUTPUT_DIR, f'epoch{epoch}/{n}.jpg'), show_img)
 
     
@@ -492,6 +496,8 @@ def main(CFG):
                 model = build_model(CFG, encoder=encoder, decoder=decoder)
                 if len(CFG.gpu)>1:
                     model = nn.DataParallel(model)
+                    model.to(CFG.device)
+                else:
                     model.to(CFG.device)
 
                 # run train
