@@ -23,6 +23,7 @@ ${ActivityNet}}
 
 ```bash
 # ActivityNet dataset
+$ python frame_extract.py --dir <raw_video_path> --output <frame_image_save_path> --sampling 5
 $ python preprocess.py
 ```
 

@@ -76,7 +76,7 @@ class FrameExtractor:
                 frame_cnt += 1
 
             if frame_cnt//300:
-                print('frame//300')
+                print('fuck')
 
             if frame_cnt > 36000:
                 success = 0

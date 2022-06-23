@@ -141,3 +141,40 @@ class ActivityDataset(torch.utils.data.Dataset):
             data = self.lr_transforms(image=data['image'])
             lab_input_img  = data['image']/255. # LR
             return lab_input_img       
+
+class ColorActivityDataset(torch.utils.data.Dataset):
+    def __init__(self, df, label=True, type='train'):
+        self.df         = df
+        self.label      = label
+        #self.LR_rgb_paths  = df['LR_rgb_paths'].tolist()
+        self.HR_rgb_paths = df['hr_rgb_paths'].tolist()
+        self.hr_transforms = HR_data_transforms[type]
+        #self.lr_transforms = LR_data_transforms[type]
+
+        
+    def __len__(self):
+        return len(self.df)
+    
+    def __getitem__(self, index):
+        # load hr rgb images
+        hr_rgb_path  = self.HR_rgb_paths[index]
+        hr_rgb_img = cv2.imread(hr_rgb_path)
+
+        # rgb -> gray
+        hr_gray_img = cv2.cvtColor(hr_rgb_img, cv2.COLOR_BGR2GRAY)
+
+        if self.label:
+            data = self.hr_transforms(image=hr_gray_img, mask=hr_rgb_img)
+            hr_rgb_img  = data['mask']/255. # HR
+            hr_gray_img  = data['image']/255. # LR
+
+            #data = self.lr_transforms(image=data['image'], mask=data['mask'])
+
+                
+            return hr_gray_img, hr_rgb_img
+
+        else: # 손봐야함
+            data = self.hr_transforms(image=lab_input_img)
+            data = self.lr_transforms(image=data['image'])
+            lab_input_img  = data['image']/255. # LR
+            return lab_input_img       
