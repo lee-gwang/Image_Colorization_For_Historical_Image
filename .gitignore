@@ -5,3 +5,4 @@ pp.ipynb
 saved_models/
 output_dirs/
 models/__pycache__/
+data/
