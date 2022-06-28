@@ -75,9 +75,6 @@ class FrameExtractor:
             else:
                 frame_cnt += 1
 
-            if frame_cnt//300:
-                print('frame//300')
-
             if frame_cnt > 36000:
                 success = 0
                 print('frame max')
