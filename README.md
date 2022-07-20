@@ -1,7 +1,12 @@
-# ActivityNet Experiments
+# Experiments
+
+## Todo
+- activation, loss
+- normalization
+- inference와 demo 간단하게 테스트 가능하게 코드 다시짜기
 
 
-### Datasets
+<!-- ### Datasets
 - 6,996 video clips
 - 170,362 frames
 - Train 80% / Val 20%
@@ -17,26 +22,38 @@ ${ActivityNet}}
 |       └── xxxx.jpg
 |       └── ...
 ​```
-```
+``` -->
 
 ## Preprocess Script
 
 ```bash
 # ActivityNet dataset
-$ python frame_extract.py --dir <raw_video_path> --output <frame_image_save_path> --sampling 5
-$ python preprocess.py
+# $ python frame_extract.py --dir <raw_video_path> --output <frame_image_save_path> --sampling 5
+# $ python preprocess.py
+
+# 0720
+$ python preprocess.py --data gettyimages --data_path /home/data/colorization/gettyimages/ --size 768
+$ python preprocess.py --data imagenet --data_path /home/data/imagenet/train --size 512
 ```
 
 ## Train Script
 ```bash
-# baseline
-# 추후에 더 추가 예정
-$ python ./script/base_activitynet.py
+# gettyimages
+$ python train.py --dataset ./data/gettyimages/HR_768/train.csv --save_img -gpu 0,1,2,3 --backbone efficientnet-b1 --scheduler CosineAnnealingLR --epoch 20 -bs 64 -expc 0719
+
+```
+<!-- python train.py --dataset gettyimages_768 --save_img -gpu 0,1,2,3 --backbone efficientnet-b0 --scheduler CosineAnnealingLR --epoch 15 -bs 128 -expc getty_768 -->
+## Validatoin
+```bash
+python val.py --backbone <your_models> -sm <your_saved_models_path> --save_img -expc sample 
 ```
 
 ## Inference & Demo
 ```bash
-python inference.py --backbone <your_models> -sm <your_saved_models_path> --save_img -expc sample 
+python inference.py --backbone efficientnet-b0 -gpu 2,3 --img_path ./data/animal/ --depth=2 -sm ./saved_models/Unet-efficientnet-b0-large_dataset_384-new_384/fold0_best.pth 
+# python inference.py --backbone efficientnet-b0 -gpu 2,3 --img_path ./data/else/ --depth=1 -sm ./saved_models/imagenet/Unet-efficientnet-b0-imagenet_sample20k-sample30-inputL/fold0_best.pth -expc else
+
+# python inference.py --backbone efficientnet-b0 -gpu 2,3 --img_path /home/data/colorization/gettyimages/ --depth=2 -sm ./saved_models/imagenet/Unet-efficientnet-b0-imagenet_sample20k-sample30-inputL/fold0_best.pth -expc getty
 ```
 
 ## Visualize (Unet-efficientnetb0)

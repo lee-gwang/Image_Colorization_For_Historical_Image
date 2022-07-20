@@ -4,6 +4,19 @@ from sklearn.model_selection import StratifiedKFold, KFold, StratifiedGroupKFold
 import os
 import cv2
 from joblib import Parallel, delayed
+from tqdm import tqdm
+
+import argparse
+
+parser = argparse.ArgumentParser(description='Script of SKT Colorization')
+parser.add_argument('--data', '-data', type=str, default='gettyimages', help='dataset name')
+parser.add_argument('--data_path', '-dp', type=str, default='/home/data/imagenet/train', help='dataset path')
+parser.add_argument('--size', '-s', type=int, default=224)
+parser.add_argument('--depth', '-d', type=int, default=2, help='path depth')
+
+
+args = parser.parse_args()
+
 
 def activity_preprocessing():
     df = pd.DataFrame()
@@ -91,14 +104,22 @@ def activity_preprocessing():
         new_df.loc[val_idx, 'fold'] = fold
     new_df.to_csv('./data/activitynet/train.csv', index=False)
 
-
 def imagenet_preprocessing():
     df = pd.DataFrame()
-    df['rgb_paths'] = glob.glob('/home/data/imagenet/train/*/*')
-    df['class'] = df['rgb_paths'].apply(lambda x:x.split('/')[5])
 
+    # path
+    data_path = args.data_path
+    if args.depth == 2:
+        data_path = glob.glob(os.path.join(data_path, '*/*'))
+    elif args.depth == 1:
+        data_path = glob.glob(os.path.join(data_path, '*'))
 
-    new_df = df.groupby('class').sample(200).reset_index(drop=True)
+    # preprocess the dataframe
+    df['rgb_paths'] = glob.glob(data_path) # ('/home/data/imagenet/train/*/*'
+    df['class'] = df['rgb_paths'].apply(lambda x:x.split('/')[-2])
+
+    # sampling
+    #new_df = df.groupby('class').sample(200).reset_index(drop=True)
 
     # make folders
     for i in glob.glob('/home/data/imagenet/train/*'):
@@ -106,11 +127,10 @@ def imagenet_preprocessing():
         
         
     # preprocess images
-    from tqdm import tqdm
     for p in tqdm(new_df['rgb_paths']):
         img = cv2.imread(p)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        img = cv2.resize(img, (224,224))
+        img = cv2.resize(img, (args.size,args.size))
         new_path = p.replace('imagenet','imagenet20k')
         cv2.imwrite(new_path, img)
         
@@ -124,3 +144,56 @@ def imagenet_preprocessing():
         new_df.loc[val_idx, 'fold'] = fold
     new_df['rgb_paths'] = new_df['rgb_paths'].apply(lambda x: x.replace('imagenet', 'imagenet20k'))   
     new_df.to_csv('./data/imagenet_sample20k/train.csv', index=False)
+
+
+
+# os.system(f'ln -s {args.data_path} ./data/{args.data}/HR')
+# os.makedirs(f'./data/{args.data}/LR', exist_ok=True)
+# os.makedirs(f'./data/{args.data}/HR', exist_ok=True)
+def resize(new_rgb_path, rgb_path):
+    img = cv2.imread(rgb_path)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img = cv2.resize(img, (args.size,args.size))
+
+    img_name = new_rgb_path.split('/')[-1]
+    new_folder = '/'.join(new_rgb_path.split('/')[:-1])
+    os.makedirs(new_folder, exist_ok=True)
+    new_path = os.path.join(new_folder, img_name)
+    cv2.imwrite(new_path, img)
+    return
+
+def image_preprocessing(args):
+    df = pd.DataFrame()
+
+    # path
+    data_path = args.data_path
+    if args.depth == 2:
+        data_path = glob.glob(os.path.join(data_path, '*/*'))
+    elif args.depth == 1:
+        data_path = glob.glob(os.path.join(data_path, '*'))
+
+    # preprocess the dataframe
+    df['rgb_paths'] = data_path # ('/home/data/imagenet/train/*/*'
+    df['class'] = df['rgb_paths'].apply(lambda x:x.split('/')[-2])
+
+    # saved new path
+    if args.depth ==2:
+        depth = -args.depth 
+    df['new_rgb_paths'] = df['rgb_paths'].apply(lambda x: os.path.join(f'./data/{args.data}', # dataset name
+                                                                        f'HR_{args.size}', # dataset size
+                                                                        '/'.join(x.split('/')[depth:-1]), # class 
+                                                                        x.split('/')[-1]))  # image name
+
+    # preprocess images
+    Parallel(n_jobs=-1, backend='threading')(delayed(resize)(new_path, path)\
+                                for new_path, path in tqdm(df[['new_rgb_paths','rgb_paths']].values, total=len(df['rgb_paths'])))
+    # save csv
+    skf = KFold(n_splits=5, shuffle=True, random_state=42)
+
+    for fold, (train_idx, val_idx) in enumerate(skf.split(df)):
+        df.loc[val_idx, 'fold'] = fold
+      
+    df.to_csv(f'./data/{args.data}/HR_{args.size}/train.csv', index=False)
+
+if __name__ == '__main__':
+    image_preprocessing(args)

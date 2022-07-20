@@ -5,7 +5,7 @@ from warmup_scheduler import GradualWarmupScheduler
 def load_data(CFG):
     dataset = CFG.dataset
     try:
-        df = pd.read_csv(f'./data/{dataset}/train.csv')
+        df = pd.read_csv(f'{dataset}')
         print('load preprocess 5fold csv')
         return df
     
