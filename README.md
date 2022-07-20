@@ -3,6 +3,7 @@
 ## Todo
 - activation, loss
 - normalization
+- inference와 demo 간단하게 테스트 가능하게 코드 다시짜기
 
 
 <!-- ### Datasets
@@ -37,9 +38,8 @@ $ python preprocess.py --data imagenet --data_path /home/data/imagenet/train --s
 
 ## Train Script
 ```bash
-# baseline
-# 추후에 더 추가 예정
-$ python ./script/base_activitynet.py
+# gettyimages
+$ python train.py --dataset ./data/gettyimages/HR_768/train.csv --save_img -gpu 0,1,2,3 --backbone efficientnet-b1 --scheduler CosineAnnealingLR --epoch 20 -bs 64 -expc 0719
 
 ```
 <!-- python train.py --dataset gettyimages_768 --save_img -gpu 0,1,2,3 --backbone efficientnet-b0 --scheduler CosineAnnealingLR --epoch 15 -bs 128 -expc getty_768 -->
