@@ -31,7 +31,7 @@ HR_data_transforms = {
     # validation은 모든 패치를 이루도록?
     "valid": A.Compose([
         # A.RandomCrop(size_,size_),
-        # A.Resize(size_,size_),
+        A.Resize(768,768),
         ToTensorV2(transpose_mask=True)
         ], p=1.0)
         }
@@ -104,9 +104,18 @@ class ActivityDataset(torch.utils.data.Dataset):
         #self.lr_transforms = LR_data_transforms[type]
 
         # norm
-        self.l_cent = 50.
-        self.l_norm = 100.
-        self.ab_norm = 110.
+        self.l_cent = 50. #
+        self.l_norm = 100. #
+        self.ab_norm = 110.  #-128 to +127
+
+    def norm(self, x, type = 'L'):
+        if type =='L':
+            #x[:,:,0] = (x[:,:,0] - 50.)/100.
+            x[:,:,0] = (x[:,:,0] - 50.) / 100.
+        elif type == 'AB':
+            x[:,:,1:] = x[:,:,1:] / 110.
+
+        return x
         
     def __len__(self):
         return len(self.df)
@@ -124,10 +133,15 @@ class ActivityDataset(torch.utils.data.Dataset):
 
         # gray -> LAB
         lab_input_img = cv2.cvtColor(hr_gray_img, cv2.COLOR_BGR2LAB)[:,:,0]
+        # lab_input_img = self.norm(lab_input_img.astype(np.float32), type='L')[:,:,0]
+        # lab_label_img = self.norm(self.norm(lab_label_img.astype(np.float32), type='L'), type='AB')
 
 
         if self.label:
             data = self.hr_transforms(image=lab_input_img, mask=lab_label_img)
+            # lab_input_img = data['image']
+            # lab_label_img = data['mask']
+
             lab_label_img  = data['mask']/255. # HR
             lab_input_img  = data['image']/255. # LR
 

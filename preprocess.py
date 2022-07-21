@@ -147,9 +147,6 @@ def imagenet_preprocessing():
 
 
 
-# os.system(f'ln -s {args.data_path} ./data/{args.data}/HR')
-# os.makedirs(f'./data/{args.data}/LR', exist_ok=True)
-# os.makedirs(f'./data/{args.data}/HR', exist_ok=True)
 def resize(new_rgb_path, rgb_path):
     img = cv2.imread(rgb_path)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)

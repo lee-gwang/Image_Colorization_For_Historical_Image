@@ -226,9 +226,9 @@ def run_inference(model, df, run, device):
         show_img = cv2.cvtColor(show_img, cv2.COLOR_LAB2RGB)
         # show_img = cv2.cvtColor(show_img, cv2.COLOR_BGR2RGB)
         cv2.imwrite(os.path.join(CFG.OUTPUT_DIR, f'pred/{n}.jpg'), show_img)
-    for n, path_ in enumerate(valid_df['hr_rgb_paths']):
+    for n, path_ in enumerate(valid_df['new_rgb_paths']):
         show_img = cv2.imread(path_)
-        show_img = cv2.cvtColor(show_img, cv2.COLOR_BGR2RGB)
+        #show_img = cv2.cvtColor(show_img, cv2.COLOR_BGR2RGB)
         # show_img = cv2.cvtColor(show_img, cv2.COLOR_BGR2RGB)
         cv2.imwrite(os.path.join(CFG.OUTPUT_DIR, f'color/{n}.jpg'), show_img)
     for n, show_img in enumerate(y_pred):
@@ -258,7 +258,7 @@ def main(CFG):
         path_ = glob.glob(os.path.join(CFG.img_path, '*/*'))
     elif CFG.path_depth == 1:
         path_ = glob.glob(os.path.join(CFG.img_path, '*'))
-    df['hr_rgb_paths'] = path_
+    df['new_rgb_paths'] = path_
 
     for encoder in CFG.backbone:
         for decoder in CFG.model_name:

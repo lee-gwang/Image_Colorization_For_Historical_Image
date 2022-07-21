@@ -53,7 +53,7 @@ from models.seg_p import build_model
 import argparse
 
 parser = argparse.ArgumentParser(description='Script of SKT Colorization')
-parser.add_argument('--dataset', '-dt', type=str, default='', help='train.csv path')
+parser.add_argument('--dataset_path', '-dp', type=str, default='', help='train.csv path')
 parser.add_argument('--gpu', '-gpu', type=str, default='2,3,4,5', help='gpu')
 
 parser.add_argument('--batch_size', '-bs', type=int, default=256)
@@ -70,10 +70,11 @@ parser.add_argument('--pretrained', type=str, default='None', help='')
 # related optimizer & scheduler ..
 parser.add_argument('--optimizer', type=str, default='adam', help='')
 parser.add_argument('--loss', type=str, default='mae', help='mae/mse')
-parser.add_argument('--scheduler', type=str, default='CosineAnnealingWarmRestarts', help='CosineAnnealingWarmRestarts/CosineAnnealingLR')
+parser.add_argument('--scheduler', type=str, default='CosineAnnealingLR', help='CosineAnnealingWarmRestarts/CosineAnnealingLR')
 
 
 # else
+parser.add_argument('--val_iter',type=int, default=5)
 parser.add_argument('--debug', action='store_true', help='debug')
 parser.add_argument('--wandb', '-wb', action='store_true', help='use wandb')
 parser.add_argument('--exp_comment', '-expc', type=str, default='version0', help='experiments folder comment')
@@ -85,7 +86,7 @@ args = parser.parse_args()
 
 
 class CFG:
-    dataset       = args.dataset
+    dataset_path  = args.dataset_path
     amp           = True
     seed          = 101
     debug         = args.debug # set debug=False for Full Training
@@ -93,7 +94,7 @@ class CFG:
     model_name    = ['Unet'] # decoder
     backbone      = [ args.backbone] # encoder # LeViT_UNet_384 #efficientnet-b2 # 'se_resnext50_32x4d'
     pretrained    = args.pretrained # pretraianed models path
-    add_comment   = f'{dataset}-{args.exp_comment}'#'negative-5k-bs32'
+    add_comment   = f'{args.exp_comment}'#'negative-5k-bs32'
 
     #comment       = f'{model_name}-{backbone}-320x384'
     num_channel   = 1
@@ -107,6 +108,7 @@ class CFG:
     scheduler     = args.scheduler #'CosineAnnealingWarmRestarts'#'CosineAnnealingLR'
     optimizer     = args.optimizer
     loss          = args.loss
+    val_iter      = args.val_iter
     #
     warmup_factor = 5 # warmupv2
     warmup_epo    = 2
@@ -280,9 +282,13 @@ def valid_one_epoch(model, dataloader, device, epoch, show=False):
         # bs, c, h, w
         # normalize
         
-        #y_pred = unnorm(y_pred.cpu().detach())
+        # y_pred = unnorm(y_pred.cpu().detach())
+        # rgb_imgs = unnorm(rgb_imgs.cpu().detach())
+
         y_pred = y_pred.cpu().detach()*255 
-        psnr_score += psnr_metric(rgb_imgs.cpu().detach()*255., y_pred)
+        rgb_imgs = rgb_imgs.cpu().detach()*255.
+
+        psnr_score += psnr_metric(rgb_imgs, y_pred)
         
         mem = torch.cuda.memory_reserved() / 1E9 if torch.cuda.is_available() else 0
         pbar.set_postfix(valid_loss=f'{epoch_loss:0.4f}',
@@ -348,7 +354,6 @@ def run_training(model, df, run, device, fold, LOGGER):
     # dataloader
     train_df = df.query("fold!=@fold").reset_index(drop=True)
     valid_df = df.query("fold==@fold").reset_index(drop=True)
-    #valid_df = valid_df.groupby('video_id').sample(1).sample(5000)
     show_df = df.query("fold==@fold").reset_index(drop=True).sample(500)
 
 
@@ -395,14 +400,52 @@ def run_training(model, df, run, device, fold, LOGGER):
                                            dataloader=train_loader, 
                                            device=CFG.device, epoch=epoch)
         
-        val_loss, val_psnr = valid_one_epoch(model, valid_loader, 
-                                                 device=CFG.device, 
-                                                 epoch=epoch)
-        y_pred = valid_one_epoch(model, show_loader, 
-                                                 device=CFG.device, 
-                                                 epoch=epoch, show=True)
-        #if isinstance(scheduler, ReduceLROnPlateau):
-        #    scheduler.step(avg_val_loss)
+        if epoch%CFG.val_iter ==0:
+            val_loss, val_psnr = valid_one_epoch(model, valid_loader, 
+                                                    device=CFG.device, 
+                                                    epoch=epoch)
+            y_pred = valid_one_epoch(model, show_loader, 
+                                                    device=CFG.device, 
+                                                    epoch=epoch, show=True)
+
+            # Log the metrics
+            #todo metric 바꾸기
+            if CFG.wandb:
+                wandb.log({"Train Loss": train_loss, 
+                        "Valid Loss": val_loss,
+                        "Valid PSNR": val_psnr,
+                        "LR":scheduler.get_last_lr()[0]})
+            
+            LOGGER.info(f'{epoch}Epoch | Valid Loss: {val_loss:0.4f} | Valid PSNR: {val_psnr:0.2f} | LR: {scheduler.get_last_lr()[0]:0.7f}')
+            
+            # deep copy the model
+            if val_psnr > best_psnr:
+                LOGGER.info(f"Valid PSNR Improved ({best_psnr:0.4f} ---> {val_psnr:0.4f})")
+                best_psnr    = val_psnr
+                best_epoch   = epoch
+                if CFG.wandb:
+                    run.summary["Best PSNR"] = val_psnr
+                    run.summary["Best Epoch"]   = best_epoch
+
+                torch.save(model.state_dict(), os.path.join(CFG.OUTPUT_DIR,f'fold{fold}_best.pth'))
+                
+                
+            print(); print()
+
+            if CFG.save_img:
+                y_pred = y_pred.permute(0,2,3,1)
+                y_pred = y_pred.cpu().detach().numpy()
+                y_pred[y_pred>255.] = 255
+                y_pred[y_pred<0] = 0
+                y_pred = y_pred.astype('uint8')#*255
+                os.makedirs(os.path.join(CFG.OUTPUT_DIR, f'epoch{epoch}'),exist_ok=True)
+                for n, show_img in enumerate(y_pred):
+                    show_img = cv2.cvtColor(show_img, cv2.COLOR_LAB2RGB)
+                    # show_img = cv2.cvtColor(show_img, cv2.COLOR_BGR2RGB)
+                    cv2.imwrite(os.path.join(CFG.OUTPUT_DIR, f'epoch{epoch}/{n}.jpg'), show_img)
+                    #if CFG.show_num_img == n :
+                    #    break
+
         if isinstance(scheduler, CosineAnnealingLR):
             scheduler.step()
         elif isinstance(scheduler, CosineAnnealingWarmRestarts):
@@ -410,46 +453,6 @@ def run_training(model, df, run, device, fold, LOGGER):
         else:
             print('else')
             scheduler.step()
-        
-        # Log the metrics
-        #todo metric 바꾸기
-        if CFG.wandb:
-            wandb.log({"Train Loss": train_loss, 
-                       "Valid Loss": val_loss,
-                       "Valid PSNR": val_psnr,
-                       "LR":scheduler.get_last_lr()[0]})
-        
-        LOGGER.info(f'{epoch}Epoch | Valid Loss: {val_loss:0.4f} | Valid PSNR: {val_psnr:0.2f} | LR: {scheduler.get_last_lr()[0]:0.7f}')
-        
-        # deep copy the model
-        if val_psnr >= best_psnr:
-            LOGGER.info(f"Valid PSNR Improved ({best_psnr:0.4f} ---> {val_psnr:0.4f})")
-            best_psnr    = val_psnr
-            best_epoch   = epoch
-            if CFG.wandb:
-                run.summary["Best PSNR"] = val_psnr
-                run.summary["Best Epoch"]   = best_epoch
-
-            torch.save(model.state_dict(), os.path.join(CFG.OUTPUT_DIR,f'fold{fold}_best.pth'))
-            
-            
-        print(); print()
-
-        if CFG.save_img:
-            y_pred = y_pred.permute(0,2,3,1)
-            y_pred = y_pred.cpu().detach().numpy()
-            y_pred[y_pred>255.] = 255
-            y_pred[y_pred<0] = 0
-            y_pred = y_pred.astype('uint8')#*255
-            os.makedirs(os.path.join(CFG.OUTPUT_DIR, f'epoch{epoch}'),exist_ok=True)
-            for n, show_img in enumerate(y_pred):
-                show_img = cv2.cvtColor(show_img, cv2.COLOR_LAB2RGB)
-                # show_img = cv2.cvtColor(show_img, cv2.COLOR_BGR2RGB)
-                cv2.imwrite(os.path.join(CFG.OUTPUT_DIR, f'epoch{epoch}/{n}.jpg'), show_img)
-                #if CFG.show_num_img == n :
-                #    break
-
-    
     end = time.time()
     time_elapsed = end - start
     LOGGER.info('Training complete in {:.0f}h {:.0f}m {:.0f}s'.format(
@@ -461,8 +464,7 @@ def run_training(model, df, run, device, fold, LOGGER):
     
     return best_psnr
 
-if CFG.wandb:
-    wandb.login(key=CFG.wb_key)
+
 
 def class2dict(f):
     return dict((name, getattr(f, name)) for name in dir(f) if not name.startswith('__'))
@@ -472,7 +474,8 @@ def class2dict(f):
 #  Main
 # ------------------------
 def main(CFG):
-
+    if CFG.wandb:
+        wandb.login(key=CFG.wb_key)
     """
     Prepare: 1.train 
     """
