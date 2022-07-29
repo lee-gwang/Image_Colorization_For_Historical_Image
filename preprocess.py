@@ -17,7 +17,7 @@ parser.add_argument('--depth', '-d', type=int, default=2, help='path depth')
 
 args = parser.parse_args()
 
-
+### Not USED ###
 def activity_preprocessing():
     df = pd.DataFrame()
     df['hr_rgb_paths'] = glob.glob('/home/data/activitynet/labels/*/*')
@@ -145,7 +145,7 @@ def imagenet_preprocessing():
     new_df['rgb_paths'] = new_df['rgb_paths'].apply(lambda x: x.replace('imagenet', 'imagenet20k'))   
     new_df.to_csv('./data/imagenet_sample20k/train.csv', index=False)
 
-
+#################
 
 def resize(new_rgb_path, rgb_path):
     img = cv2.imread(rgb_path)
