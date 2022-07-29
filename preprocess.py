@@ -174,8 +174,8 @@ def image_preprocessing(args):
     df['class'] = df['rgb_paths'].apply(lambda x:x.split('/')[-2])
 
     # saved new path
-    if args.depth ==2:
-        depth = -args.depth 
+    #if args.depth ==2:
+    depth = -args.depth 
     df['new_rgb_paths'] = df['rgb_paths'].apply(lambda x: os.path.join(f'./data/{args.data}', # dataset name
                                                                         f'HR_{args.size}', # dataset size
                                                                         '/'.join(x.split('/')[depth:-1]), # class 

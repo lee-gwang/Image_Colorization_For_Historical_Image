@@ -1,54 +1,5 @@
 # lib
-import numpy as np
-import pandas as pd
-import random
-from glob import glob
-import os, shutil
-from tqdm import tqdm
-tqdm.pandas()
-import time
-import copy
-import joblib
-from collections import defaultdict
-import gc
-from IPython import display as ipd
-
-# visualization
-import cv2
-import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
-
-# Sklearn
-from sklearn.model_selection import StratifiedKFold, KFold, StratifiedGroupKFold
-
-# PyTorch 
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.optim.lr_scheduler import CosineAnnealingLR, CosineAnnealingWarmRestarts, ReduceLROnPlateau
-from torch.utils.data import Dataset, DataLoader
-from torch.cuda import amp
-
-import timm
-
-# Albumentations for augmentations
-import albumentations as A
-from albumentations.pytorch import ToTensorV2
-
-#import rasterio
-from joblib import Parallel, delayed
-
-import warnings
-warnings.filterwarnings("ignore")
-
-import wandb
-import segmentation_models_pytorch as smp
-import math
-from dataloader import ImageNetDataset, ActivityDataset
-from utils.utils import load_data, init_logger
-
-# model
-from models.seg_p import build_model
+import os
 
 import argparse
 
@@ -102,7 +53,7 @@ class CFG:
 
     train_bs      = args.batch_size
     valid_bs      = train_bs
-    img_size      = [224, 224]#[320, 384]
+    img_size      = 768 # skt test size
     epochs        = args.epochs
     lr            = args.lr # 2e-3
     scheduler     = args.scheduler #'CosineAnnealingWarmRestarts'#'CosineAnnealingLR'
@@ -127,29 +78,65 @@ class CFG:
     #show_num_img  = args.show_num_img
     num_workers   = 16
     #wb_key        = '370d7a23c0cf0998cc65127c6a7bf00180540617'
-    
-def set_seed(seed = 42):
-    '''Sets the seed of the entire notebook so results are the same every time we run.
-    This is for REPRODUCIBILITY.'''
-    np.random.seed(seed)
-    random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    # When running on the CuDNN backend, two further options must be set
-    torch.backends.cudnn.deterministic = False
-    torch.backends.cudnn.benchmark = True
-    # Set a fixed value for the hash seed
-    os.environ['PYTHONHASHSEED'] = str(seed)
-    print('> SEEDING DONE')
 
-if CFG.scheduler=='warmupv2':
-    assert CFG.epochs == (CFG.warmup_epo + CFG.cosine_epo)
+os.environ["CUDA_VISIBLE_DEVICES"] = CFG.gpu
+
+import numpy as np
+import pandas as pd
+import random
+from glob import glob
+import os, shutil
+from tqdm import tqdm
+tqdm.pandas()
+import time
+import copy
+import joblib
+from collections import defaultdict
+import gc
+from IPython import display as ipd
+
+# visualization
+import cv2
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
+
+# Sklearn
+from sklearn.model_selection import StratifiedKFold, KFold, StratifiedGroupKFold
+
+# PyTorch 
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.optim.lr_scheduler import CosineAnnealingLR, CosineAnnealingWarmRestarts, ReduceLROnPlateau
+from torch.utils.data import Dataset, DataLoader
+from torch.cuda import amp
+
+import timm
+
+# Albumentations for augmentations
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
+
+#import rasterio
+from joblib import Parallel, delayed
+
+import warnings
+warnings.filterwarnings("ignore")
+
+import wandb
+import segmentation_models_pytorch as smp
+import math
+from dataloader import ImageNetDataset, ActivityDataset
+from utils.utils import load_data, init_logger, set_seed
+
+# model
+from models.seg_p import build_model
+
 
 # seed
 set_seed(CFG.seed)
 
 # use gpu
-os.environ["CUDA_VISIBLE_DEVICES"] = CFG.gpu
 CFG.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
@@ -182,6 +169,17 @@ def loss_fn(CFG):
     elif CFG.loss == 'mse':
         loss = nn.MSELoss()
     return loss
+
+def save_img(y_pred, epoch, comment='val'):
+    y_pred = y_pred.permute(0,2,3,1)
+    y_pred = y_pred.cpu().detach().numpy()
+    y_pred[y_pred>255.] = 255
+    y_pred[y_pred<0] = 0
+    y_pred = y_pred.astype('uint8')#*255
+    os.makedirs(os.path.join(CFG.OUTPUT_DIR, comment, f'epoch{epoch}'),exist_ok=True)
+    for n, show_img in enumerate(y_pred):
+        show_img = cv2.cvtColor(show_img, cv2.COLOR_LAB2RGB)
+        cv2.imwrite(os.path.join(CFG.OUTPUT_DIR, comment, f'epoch{epoch}/{n}.jpg'), show_img)
 
 
 # ------------------------
@@ -350,7 +348,7 @@ def get_optimizer(model, CFG):
 # ------------------------
 #  Run
 # ------------------------
-def run_training(model, df, run, device, fold, LOGGER):
+def run_training(model, df, skt_df, run, device, fold, LOGGER):
     # dataloader
     train_df = df.query("fold!=@fold").reset_index(drop=True)
     valid_df = df.query("fold==@fold").reset_index(drop=True)
@@ -362,18 +360,24 @@ def run_training(model, df, run, device, fold, LOGGER):
         train_df = train_df.head(200)
         valid_df = valid_df.head(50)
         show_df = valid_df.head(50)
+        #skt_df = 
 
     # new_aug 
 
     train_dataset = ActivityDataset(train_df, type='train')
     valid_dataset = ActivityDataset(valid_df, type='valid')
     show_dataset = ActivityDataset(show_df, type='valid')
+    show_dataset2 = ActivityDataset(skt_df, type='valid')
+
 
     train_loader = DataLoader(train_dataset, batch_size=CFG.train_bs if not CFG.debug else 20, 
                               num_workers=CFG.num_workers, shuffle=True, pin_memory=True, drop_last=False)
     valid_loader = DataLoader(valid_dataset, batch_size=CFG.valid_bs if not CFG.debug else 20, 
                               num_workers=CFG.num_workers, shuffle=False, pin_memory=True)
     show_loader = DataLoader(show_dataset, batch_size=CFG.valid_bs if not CFG.debug else 20, 
+                              num_workers=CFG.num_workers, shuffle=True, pin_memory=True)
+
+    show_loader2 = DataLoader(show_dataset2, batch_size=CFG.valid_bs if not CFG.debug else 20, 
                               num_workers=CFG.num_workers, shuffle=True, pin_memory=True)
     # optimizer
     optimizer = get_optimizer(model, CFG)
@@ -407,6 +411,9 @@ def run_training(model, df, run, device, fold, LOGGER):
             y_pred = valid_one_epoch(model, show_loader, 
                                                     device=CFG.device, 
                                                     epoch=epoch, show=True)
+            y_pred2 = valid_one_epoch(model, show_loader2, 
+                                                    device=CFG.device, 
+                                                    epoch=epoch, show=True)
 
             # Log the metrics
             #todo metric 바꾸기
@@ -433,18 +440,8 @@ def run_training(model, df, run, device, fold, LOGGER):
             print(); print()
 
             if CFG.save_img:
-                y_pred = y_pred.permute(0,2,3,1)
-                y_pred = y_pred.cpu().detach().numpy()
-                y_pred[y_pred>255.] = 255
-                y_pred[y_pred<0] = 0
-                y_pred = y_pred.astype('uint8')#*255
-                os.makedirs(os.path.join(CFG.OUTPUT_DIR, f'epoch{epoch}'),exist_ok=True)
-                for n, show_img in enumerate(y_pred):
-                    show_img = cv2.cvtColor(show_img, cv2.COLOR_LAB2RGB)
-                    # show_img = cv2.cvtColor(show_img, cv2.COLOR_BGR2RGB)
-                    cv2.imwrite(os.path.join(CFG.OUTPUT_DIR, f'epoch{epoch}/{n}.jpg'), show_img)
-                    #if CFG.show_num_img == n :
-                    #    break
+                save_img(y_pred, epoch, comment='val')
+                save_img(y_pred2, epoch, comment='skt_test')
 
         if isinstance(scheduler, CosineAnnealingLR):
             scheduler.step()
@@ -481,7 +478,10 @@ def main(CFG):
     """
     fold_score={}
 
-    df = load_data(CFG)      
+    df = load_data(CFG)
+    skt_df = pd.read_csv(f'./data/skt_test/HR_{CFG.img_size}/train.csv')
+
+
     for encoder in CFG.backbone:
         for decoder in CFG.model_name:
             fold_score[f'{encoder}_{decoder}']=[]
@@ -520,7 +520,7 @@ def main(CFG):
 
 
                 # run train
-                best_dice_score = run_training(model, df, run, CFG.device, fold, LOGGER)
+                best_dice_score = run_training(model, df, skt_df, run, CFG.device, fold, LOGGER)
                 
                 fold_score[f'{encoder}_{decoder}'].append({f'{fold}fold' : best_dice_score})
                 

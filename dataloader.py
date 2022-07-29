@@ -31,6 +31,12 @@ HR_data_transforms = {
     # validation은 모든 패치를 이루도록?
     "valid": A.Compose([
         # A.RandomCrop(size_,size_),
+        # A.Resize(768,768),
+        ToTensorV2(transpose_mask=True)
+        ], p=1.0),
+
+    "infer": A.Compose([
+        # A.RandomCrop(size_,size_),
         A.Resize(768,768),
         ToTensorV2(transpose_mask=True)
         ], p=1.0)

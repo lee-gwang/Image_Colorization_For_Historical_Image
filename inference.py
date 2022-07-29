@@ -195,7 +195,7 @@ def run_inference(model, df, run, device):
     valid_df = df
 
     # new_aug 
-    valid_dataset = ActivityDataset(valid_df, type='valid', label=False)
+    valid_dataset = ActivityDataset(valid_df, type='infer', label=False)
 
     valid_loader = DataLoader(valid_dataset, batch_size=CFG.valid_bs if not CFG.debug else 20, 
                               num_workers=CFG.num_workers, shuffle=False, pin_memory=True)
