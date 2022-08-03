@@ -9,7 +9,7 @@ parser.add_argument('--gpu', '-gpu', type=str, default='2,3,4,5', help='gpu')
 
 parser.add_argument('--batch_size', '-bs', type=int, default=256)
 parser.add_argument('--epochs', '-e', type=int, default=50)
-parser.add_argument('--lr', '-lr', type=float, default=2e-3, help='learning rate')
+parser.add_argument('--lr', '-lr', type=float, default=1e-4, help='learning rate')
 
 
 # related models
@@ -352,7 +352,7 @@ def run_training(model, df, skt_df, run, device, fold, LOGGER):
     # dataloader
     train_df = df.query("fold!=@fold").reset_index(drop=True)
     valid_df = df.query("fold==@fold").reset_index(drop=True)
-    show_df = df.query("fold==@fold").reset_index(drop=True).sample(500)
+    show_df = df.query("fold==@fold").reset_index(drop=True).sample(10)
 
 
 
@@ -375,10 +375,10 @@ def run_training(model, df, skt_df, run, device, fold, LOGGER):
     valid_loader = DataLoader(valid_dataset, batch_size=CFG.valid_bs if not CFG.debug else 20, 
                               num_workers=CFG.num_workers, shuffle=False, pin_memory=True)
     show_loader = DataLoader(show_dataset, batch_size=CFG.valid_bs if not CFG.debug else 20, 
-                              num_workers=CFG.num_workers, shuffle=True, pin_memory=True)
+                              num_workers=CFG.num_workers, shuffle=False, pin_memory=True)
 
     show_loader2 = DataLoader(show_dataset2, batch_size=CFG.valid_bs if not CFG.debug else 20, 
-                              num_workers=CFG.num_workers, shuffle=True, pin_memory=True)
+                              num_workers=4, shuffle=False, pin_memory=False)
     # optimizer
     optimizer = get_optimizer(model, CFG)
 
@@ -403,6 +403,7 @@ def run_training(model, df, skt_df, run, device, fold, LOGGER):
         train_loss = train_one_epoch(model, optimizer, scheduler, 
                                            dataloader=train_loader, 
                                            device=CFG.device, epoch=epoch)
+
         
         if epoch%CFG.val_iter ==0:
             val_loss, val_psnr = valid_one_epoch(model, valid_loader, 
@@ -411,9 +412,11 @@ def run_training(model, df, skt_df, run, device, fold, LOGGER):
             y_pred = valid_one_epoch(model, show_loader, 
                                                     device=CFG.device, 
                                                     epoch=epoch, show=True)
-            y_pred2 = valid_one_epoch(model, show_loader2, 
-                                                    device=CFG.device, 
-                                                    epoch=epoch, show=True)
+
+            # y_pred2 = valid_one_epoch(model, show_loader2, 
+            #                                         device=CFG.device, 
+            #                                         epoch=epoch, show=True)
+        
 
             # Log the metrics
             #todo metric 바꾸기
@@ -434,14 +437,14 @@ def run_training(model, df, skt_df, run, device, fold, LOGGER):
                     run.summary["Best PSNR"] = val_psnr
                     run.summary["Best Epoch"]   = best_epoch
 
-                torch.save(model.state_dict(), os.path.join(CFG.OUTPUT_DIR,f'fold{fold}_best.pth'))
+                torch.save(model.state_dict(), os.path.join(CFG.OUTPUT_DIR,f'fold{fold}_best_e{epoch}.pth'))
                 
                 
             print(); print()
 
             if CFG.save_img:
                 save_img(y_pred, epoch, comment='val')
-                save_img(y_pred2, epoch, comment='skt_test')
+                # save_img(y_pred2, epoch, comment='skt_test')
 
         if isinstance(scheduler, CosineAnnealingLR):
             scheduler.step()

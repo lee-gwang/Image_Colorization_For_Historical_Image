@@ -18,28 +18,35 @@ data_transforms = {
     ], p=1.0)
     }
 
-size_ = 384
 HR_data_transforms = {
     "train": A.Compose([
-        #A.RandomCrop(size_,size_),
+        # A.RandomCrop(768,768),
         # A.Resize(size_,size_),
         A.HorizontalFlip(p=0.5),
+        A.GaussNoise(p=0.3),
         # A.RandomRotate90(p=0.5),
         ToTensorV2(transpose_mask=True)
         ], p=1.0),
     
     # validation은 모든 패치를 이루도록?
     "valid": A.Compose([
-        # A.RandomCrop(size_,size_),
+        # A.RandomCrop(768,768),
         # A.Resize(768,768),
         ToTensorV2(transpose_mask=True)
         ], p=1.0),
 
     "infer": A.Compose([
         # A.RandomCrop(size_,size_),
-        A.Resize(768,768),
+        A.Resize(1024,1024),
         ToTensorV2(transpose_mask=True)
-        ], p=1.0)
+        ], p=1.0),
+
+    "patch_infer": A.Compose([
+        # A.RandomCrop(size_,size_),
+        ToTensorV2(transpose_mask=True)
+        ], p=1.0),
+
+
         }
 # LR_data_transforms = {
 #     "train": A.Compose([

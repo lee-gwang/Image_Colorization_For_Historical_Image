@@ -1,12 +1,12 @@
-# lib
 import os
 import argparse
+from unittest import result
 
 parser = argparse.ArgumentParser(description='Script of SKT Colorization')
-parser.add_argument('--gpu', '-gpu', type=str, default='2,3,4,5', help='gpu')
+parser.add_argument('--gpu', '-gpu', type=str, default='0,1,2,3', help='gpu')
 
 # related models
-parser.add_argument('--batch_size', '-bs', type=int, default=256)
+parser.add_argument('--batch_size', '-bs', type=int, default=1)
 parser.add_argument('--backbone', type=str, default='efficientnet-b0', help='')
 parser.add_argument('--decoder', type=str, default='Unet', help='')
 
@@ -19,6 +19,12 @@ parser.add_argument('--saved_models', '-sm',type=str, default='')
 # path
 parser.add_argument('--img_path', '-ip',type=str, default='')
 parser.add_argument('--depth', type=int, default=1)
+
+# inference
+parser.add_argument('--patch', '-p', action='store_true', help='patch-wise inference')
+parser.add_argument('--image', '-i', action='store_true', help='image-wise inference')
+
+
 
 args = parser.parse_args()
 
@@ -49,9 +55,11 @@ class CFG:
 
     num_workers   = 8
     #wb_key        = '370d7a23c0cf0998cc65127c6a7bf00180540617'
-    
+
 os.environ["CUDA_VISIBLE_DEVICES"] = CFG.gpu
 
+
+# lib
 import numpy as np
 import pandas as pd
 import random
@@ -101,6 +109,7 @@ from utils.utils import load_data, init_logger, set_seed
 
 # model
 from models.seg_p import build_model
+
 
 # seed
 set_seed(CFG.seed)
@@ -158,21 +167,112 @@ def valid_one_epoch(model, dataloader, device):
         return norm_img
 
     y_preds=[]
-    for step, gray_imgs in pbar:        
-        gray_imgs  = gray_imgs.to(device)#, dtype=torch.float)
-        
-        batch_size = gray_imgs.size(0)
-        
-        y_pred  = model(gray_imgs)
-        y_pred = torch.cat([gray_imgs,y_pred], 1)
-        
-        y_pred = y_pred.cpu().detach()*255 ; y_preds.append(y_pred)
-        
+    results = []
+    # m1 : 4가지 스케일 768_2, 768_4, 512, 1024 
+    # m2 : 1가지 스케일 768_4
+    # m3 : 오직 patch, 768_4
+    # m4 : 오직 image-wise 768_4
+    
+    hp_list = [(4, 768, 740, 0.8, 0.2), (2, 768, 740, 0.8, 0.2), 
+              (2, 1024, 1000, 0.7, 0.1), (3, 512, 500, 0.6, 0.1)] # (scale, image_size, stride, patch weight, image weight)
+
+
+
+    # 그냥 튜플로 만들자 앙상블 파라미터
+    batch_size = 128
+    for step, gray_imgs in pbar:       
+        ensemble_img = []
+        len_weights = 0 # total of the ensemble weights
+        if args.patch:
+            for (scale, img_size, stride, p_w, i_w) in hp_list:
+                img_size2 = img_size * scale
+                _,c,h,w = gray_imgs.shape
+                ##############
+                crop = []
+                position = []
+                batch_count = 0
+
+                result_img = np.zeros([3, h, w])
+                voting_mask = np.zeros([3, h, w])
+                for top in range(0, h, stride):
+                    for left in range(0, w, stride):#-img_size+stride
+                        piece = torch.zeros([1, 1, img_size2, img_size2])
+                        temp = gray_imgs[:, :, top:top+img_size2, left:left+img_size2] # bs, c, h, w
+
+                        piece[:, :, :temp.shape[2], :temp.shape[3]] = temp
+                        # print('piece2 : ',piece.shape)
+
+                        # crop.append(piece)
+                        crop.append(piece)
+                        position.append([top, left])
+                        batch_count += 1
+                        if batch_count == args.batch_size:
+                            crop = torch.cat(crop, axis=0).to(device)
+                            pred  = model(crop)
+                            #
+                            pred  = model(nn.Upsample(scale_factor=1/scale, mode='bilinear')(crop))
+                            pred = nn.Upsample(scale_factor=scale, mode='bilinear')(pred)
+                            #
+
+                            pred = torch.cat([crop, pred], 1)
+                            pred = pred.cpu().detach().numpy()
+                            #pred = model(crop)*255
+                            #pred = pred.detach().cpu().numpy()
+                            crop = []
+                            batch_count = 0
+                            for num, (t, l) in enumerate(position):
+                                piece = pred[num]
+                                c_, h_, w_ = result_img[:, t:t+img_size2, l:l+img_size2].shape
+                                result_img[:, t:t+img_size2, l:l+img_size2] += piece[:, :h_, :w_]
+                                voting_mask[:, t:t+img_size2, l:l+img_size2] += 1
+                            position = []
+                if batch_count != 0: # batch size만큼 안채워지면
+                    # crop = torch.from_numpy(np.array(crop)).permute(0,3,1,2).to(device)
+                    crop = torch.stack(crop, axis=0).to(device)
+
+
+                    # pred = model(crop)*255
+                    # pred = pred.detach().cpu().numpy()
+                    pred  = model(crop)
+                    pred = torch.cat([crop,pred], 1)
+                    pred = pred.cpu().detach().numpy()
+                    crop = []
+                    batch_count = 0
+                    for num, (t, l) in enumerate(position):
+                        piece = pred[num]
+                        c_, h_, w_ = result_img[:, t:t+img_size2, l:l+img_size2].shape
+                        result_img[:, t:t+h, l:l+w] += piece[:h, :w]
+                        voting_mask[:, t:t+h, l:l+w] += 1
+                    position = []
+
+
+                result_img = result_img/voting_mask
+                ensemble_img.append(result_img*p_w)
+                len_weights += p_w
+
+
+            if args.image:
+                # image-wise ensmeble (나중에는, for구문 안에 넣어야할듯,,)
+                gray_imgs = gray_imgs.to(device)
+                pred = model(nn.Upsample(size=img_size, mode='bilinear')(gray_imgs))
+                pred = nn.Upsample(size=(h,w), mode='bilinear')(pred)
+                pred = torch.cat([gray_imgs, pred], 1).cpu().detach().numpy() # bs, c, h, w
+                ensemble_img.append(pred[0]*i_w)
+                len_weight += i_w
+
+
+
+        # ensmeble
+        # result_img = np.sum(ensemble_img, axis=0)/len(ensemble_img)
+        result_img = np.sum(ensemble_img, axis=0)/len_weight
+
+        result_img = np.around(result_img*255).astype(np.uint8).transpose(1,2,0)
+        results.append(result_img)
+
         mem = torch.cuda.memory_reserved() / 1E9 if torch.cuda.is_available() else 0
 
-    y_preds = torch.cat(y_preds, 0)
     
-    return y_preds # 정확하지 않음, batch 남는 부분에 의해 / # 저장위해 y_pred
+    return results # 정확하지 않음, batch 남는 부분에 의해 / # 저장위해 y_pred
 
 
 # ------------------------
@@ -183,10 +283,10 @@ def run_inference(model, df, run, device):
     valid_df = df
 
     # new_aug 
-    valid_dataset = ActivityDataset(valid_df, type='infer', label=False)
+    valid_dataset = ActivityDataset(valid_df, type='patch_infer', label=False)
 
     valid_loader = DataLoader(valid_dataset, batch_size=CFG.valid_bs if not CFG.debug else 20, 
-                              num_workers=4, shuffle=False, pin_memory=True)
+                              num_workers=CFG.num_workers, shuffle=False, pin_memory=True)
     
     
     # To automatically log gradients
@@ -199,12 +299,6 @@ def run_inference(model, df, run, device):
                                                 device=CFG.device, 
                                                 )
     
-    # pred
-    y_pred = y_pred.permute(0,2,3,1)
-    y_pred = y_pred.cpu().detach().numpy()
-    y_pred[y_pred>255.] = 255
-    y_pred[y_pred<0] = 0
-    y_pred = y_pred.astype('uint8')#*255
 
     # true
     os.makedirs(os.path.join(CFG.OUTPUT_DIR, 'color'), exist_ok=True)
@@ -212,7 +306,6 @@ def run_inference(model, df, run, device):
     os.makedirs(os.path.join(CFG.OUTPUT_DIR, 'gray'), exist_ok=True)
     for n, show_img in enumerate(y_pred):
         show_img = cv2.cvtColor(show_img, cv2.COLOR_LAB2RGB)
-        # show_img = cv2.cvtColor(show_img, cv2.COLOR_BGR2RGB)
         cv2.imwrite(os.path.join(CFG.OUTPUT_DIR, f'pred/{n}.jpg'), show_img)
     for n, path_ in enumerate(valid_df['new_rgb_paths']):
         show_img = cv2.imread(path_)
@@ -249,7 +342,7 @@ def main(CFG):
         path_ = glob.glob(os.path.join(CFG.img_path, '*'))
     df['new_rgb_paths'] = path_
 
-    #df = df.sample(1000)
+    # df = df.sample(1000)
 
     for encoder in CFG.backbone:
         for decoder in CFG.model_name:

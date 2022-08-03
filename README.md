@@ -1,9 +1,9 @@
 # Experiments
 
 ## Todo
-- activation, loss
-- normalization
-- inference와 demo 간단하게 테스트 가능하게 코드 다시짜기
+- validation 너무 느린데, 더해서 풀자
+- train중에 18데이터 validation으로 함께 visualize 시켜보자
+- inference 사진많으면 가끔 왜안되니..?
 
 
 <!-- ### Datasets
@@ -30,17 +30,26 @@ ${ActivityNet}}
 # 0720
 ## gettyimages
 $ python preprocess.py --data gettyimages --data_path /home/data/colorization/gettyimages/ --size 768
-## imagenet
-$ python preprocess.py --data imagenet --data_path /home/data/imagenet/train --size 512
+python preprocess.py --data human --data_path /home/data/colorization/human --size 768 --fold 10 --depth 2
+python preprocess.py --data ffhd --data_path /home/data/colorization/ffhd --size 768 --fold 10 --depth 2
+
+python preprocess.py --data_path ./data/ffhd/ --size 1024 --fold 10 --depth 2
+# no resize
+python preprocess.py --data_path /home/data/colorization/street/ --fold 10 --depth 2
+#
 ```
 
 ## Train Script
 ```bash
-# gettyimages
-$ python train.py --dataset_path ./data/gettyimages/HR_768/train.csv --save_img -gpu 0,1,2,3 --backbone efficientnet-b1 --scheduler CosineAnnealingLR --epoch 20 -bs 64 -expc 0720_newnorm
+
+python train.py --dataset_path ./data/ffhq_v2/HR_768/train_10.csv --save_img -gpu 0,1,2,3 --backbone efficientnet-b1 --scheduler CosineAnnealingLR --epoch 50 -bs 128 -expc 0802_ffhq_v2_pretrained_noise
+python train.py --dataset_path ./data/ffhq_v2/HR_768/train_10.csv --save_img -gpu 0,1,2,3 --backbone efficientnet-b1 --scheduler CosineAnnealingLR --epoch 50 -bs 64 -expc 0802_ffhq_v2_pretrained_noise --pretrained ./saved_models/Unet-efficientnet-b1-0731_ffhd_else/fold0_best.pth 
+
+python train.py --dataset_path ./data/ffhq_v3/HR_768/train_10.csv --save_img -gpu 4,5,6,7 --backbone efficientnet-b1 --scheduler CosineAnnealingLR --epoch 50 -bs 64 -expc 0803_ffhq_v3_pretrained_noise2 --pretrained ./saved_models/Unet-efficientnet-b1-0802_ffhq_v2_pretrained_noise/fold0_best_e50.pth --val_iter 1
+
+
 
 ```
-<!-- python train.py --dataset gettyimages_768 --save_img -gpu 0,1,2,3 --backbone efficientnet-b0 --scheduler CosineAnnealingLR --epoch 15 -bs 128 -expc getty_768 -->
 ## Validation
 ```bash
 python val.py --backbone <your_models> -sm <your_saved_models_path> --save_img -expc sample 
@@ -48,10 +57,12 @@ python val.py --backbone <your_models> -sm <your_saved_models_path> --save_img -
 
 ## Inference & Demo
 ```bash
-python inference.py --backbone efficientnet-b0 -gpu 2,3 --img_path ./data/animal/ --depth=2 -sm ./saved_models/Unet-efficientnet-b0-large_dataset_384-new_384/fold0_best.pth 
+python inference.py --backbone efficientnet-b0 -gpu 2,3 --img_path ./data/animal/ --depth=2 -sm ./saved_models/Unet-efficientnet-b0-large_dataset_384-new_384/fold0_best.pth -expc
 python inference.py --backbone efficientnet-b1 -gpu 0,1,2,3 --img_path ./data/color_SR_After/ -bs 128 --depth=1 -sm ./saved_models/Unet-efficientnet-b1-gettyimages_768-0719/fold0_best.pth
-# python inference.py --backbone efficientnet-b0 -gpu 2,3 --img_path ./data/else/ --depth=1 -sm ./saved_models/imagenet/Unet-efficientnet-b0-imagenet_sample20k-sample30-inputL/fold0_best.pth -expc else
-# python inference.py --backbone efficientnet-b0 -gpu 2,3 --img_path /home/data/colorization/gettyimages/ --depth=2 -sm ./saved_models/imagenet/Unet-efficientnet-b0-imagenet_sample20k-sample30-inputL/fold0_best.pth -expc getty
+
+# 0803
+python inference_patch.py --backbone efficientnet-b1 --img_path /home/data/colorization/skt_sample/ --depth=1 -sm ./saved_models/Unet-efficientnet-b1-0803_ffhq_v3_pretrained_noise2/fold0_best_e9.pth -expc temp_power_ensemble --gpu=0,1 --image --patch
+
 ```
 
 ## Visualize (Unet-efficientnetb0)
