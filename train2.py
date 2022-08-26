@@ -19,7 +19,6 @@ parser.add_argument('--pretrained', type=str, default='None', help='')
 parser.add_argument('--activation', type=str, default='sigmoid', help='')
 
 
-
 # related optimizer & scheduler ..
 parser.add_argument('--optimizer', type=str, default='adam', help='')
 parser.add_argument('--loss', type=str, default='mae', help='mae/mse')
@@ -105,6 +104,7 @@ from matplotlib.patches import Rectangle
 
 # Sklearn
 from sklearn.model_selection import StratifiedKFold, KFold, StratifiedGroupKFold
+from skimage import color
 
 # PyTorch 
 import torch
@@ -129,7 +129,7 @@ warnings.filterwarnings("ignore")
 import wandb
 import segmentation_models_pytorch as smp
 import math
-from dataloader import ActivityDataset
+from dataloader import ColorDataset
 from utils.utils import load_data, init_logger, set_seed
 
 # model
@@ -174,16 +174,23 @@ def loss_fn(CFG):
     return loss
 
 def save_img(y_pred, epoch, comment='val'):
-    y_pred = y_pred.permute(0,2,3,1)
-    y_pred = y_pred.cpu().detach().numpy()
-    y_pred[y_pred>255.] = 255
-    y_pred[y_pred<0] = 0
     y_pred = y_pred.astype('uint8')#*255
     os.makedirs(os.path.join(CFG.OUTPUT_DIR, comment, f'epoch{epoch}'),exist_ok=True)
     for n, show_img in enumerate(y_pred):
-        show_img = cv2.cvtColor(show_img, cv2.COLOR_LAB2RGB)
         cv2.imwrite(os.path.join(CFG.OUTPUT_DIR, comment, f'epoch{epoch}/{n}.jpg'), show_img)
 
+def lab2rgb(L, ab):
+    """
+    L : range: [-1, 1], torch tensor
+    ab : range: [-1, 1], torch tensor
+    """
+    ab2 = ab * 100.0
+    L2 = (L + 1.0) * 50.0
+    Lab = torch.cat([L2, ab2], dim=1)
+    Lab = Lab.detach().cpu().float().numpy()
+    Lab = np.transpose(Lab.astype(np.float32), (0, 2, 3, 1))
+    rgb = color.lab2rgb(Lab) * 255
+    return rgb
 
 # ------------------------
 #  Train
@@ -197,8 +204,8 @@ def train_one_epoch(model, optimizer, scheduler, dataloader, device, epoch):
     criterion = loss_fn(CFG)
     pbar = tqdm(enumerate(dataloader), total=len(dataloader), desc='Train ')
     for step, (gray_imgs, rgb_imgs) in pbar:         
-        gray_imgs = gray_imgs.to(device)#, dtype=torch.float)
-        rgb_imgs  = rgb_imgs.to(device)#, dtype=torch.float)
+        gray_imgs = gray_imgs.to(device) # 1ch, L
+        rgb_imgs  = rgb_imgs.to(device)  # 2ch, AB
         
         batch_size = gray_imgs.size(0)
 
@@ -206,8 +213,7 @@ def train_one_epoch(model, optimizer, scheduler, dataloader, device, epoch):
         optimizer.zero_grad()
         if CFG.amp:
             with amp.autocast(enabled=True):
-                y_pred = model(gray_imgs)
-                y_pred = torch.cat([gray_imgs,y_pred], 1)
+                y_pred = model(gray_imgs) # 2ch, AB
 
                 loss   = criterion(y_pred, rgb_imgs)
                 loss   = loss / CFG.n_accumulate
@@ -219,7 +225,6 @@ def train_one_epoch(model, optimizer, scheduler, dataloader, device, epoch):
                 scaler.update()
         else:
             y_pred = model(gray_imgs)
-            y_pred = torch.cat([gray_imgs,y_pred], 1)
 
             loss   = criterion(y_pred, rgb_imgs)
             loss   = loss / CFG.n_accumulate
@@ -271,7 +276,6 @@ def valid_one_epoch(model, dataloader, device, epoch, show=False):
         batch_size = gray_imgs.size(0)
         
         y_pred  = model(gray_imgs)
-        y_pred = torch.cat([gray_imgs,y_pred], 1)
         loss    = criterion(y_pred, rgb_imgs)
         
         running_loss += (loss.item() * batch_size)
@@ -279,17 +283,13 @@ def valid_one_epoch(model, dataloader, device, epoch, show=False):
         
         epoch_loss = running_loss / dataset_size
         
-
         # bs, c, h, w
         # normalize
         
-        # y_pred = unnorm(y_pred.cpu().detach())
-        # rgb_imgs = unnorm(rgb_imgs.cpu().detach())
+        y_pred = lab2rgb(gray_imgs, y_pred)
+        rgb_imgs = lab2rgb(gray_imgs, rgb_imgs)
 
-        y_pred = y_pred.cpu().detach()*255 
-        rgb_imgs = rgb_imgs.cpu().detach()*255.
-
-        psnr_score += psnr_metric(rgb_imgs, y_pred)
+        psnr_score += psnr_metric(torch.tensor(rgb_imgs), torch.tensor(y_pred))
         
         mem = torch.cuda.memory_reserved() / 1E9 if torch.cuda.is_available() else 0
         pbar.set_postfix(valid_loss=f'{epoch_loss:0.4f}',
@@ -297,7 +297,7 @@ def valid_one_epoch(model, dataloader, device, epoch, show=False):
         
         if show : y_preds.append(y_pred)
     if show: 
-        y_preds = torch.cat(y_preds, 0)
+        y_preds = np.concatenate(y_preds, 0)
         return y_preds
     
     return epoch_loss, psnr_score/len(dataloader) # 정확하지 않음, batch 남는 부분에 의해 / # 저장위해 y_pred
@@ -354,8 +354,8 @@ def get_optimizer(model, CFG):
 def run_training(model, df, skt_df, run, device, fold, LOGGER):
     # dataloader
     train_df = df.query("fold!=@fold").reset_index(drop=True)
-    valid_df = df.query("fold==@fold").reset_index(drop=True)
-    show_df = df.query("fold==@fold").reset_index(drop=True).sample(10)
+    valid_df = df.query("fold==@fold").sample(100).reset_index(drop=True)
+    show_df = df.query("fold==@fold").sample(10).reset_index(drop=True)
 
 
 
@@ -367,10 +367,10 @@ def run_training(model, df, skt_df, run, device, fold, LOGGER):
 
     # new_aug 
 
-    train_dataset = ActivityDataset(train_df, type='train')
-    valid_dataset = ActivityDataset(valid_df, type='valid')
-    show_dataset = ActivityDataset(show_df, type='valid')
-    show_dataset2 = ActivityDataset(skt_df, type='valid')
+    train_dataset = ColorDataset(train_df, type='train')
+    valid_dataset = ColorDataset(valid_df, type='valid')
+    show_dataset = ColorDataset(show_df, type='valid')
+    show_dataset2 = ColorDataset(skt_df, type='valid')
 
 
     train_loader = DataLoader(train_dataset, batch_size=CFG.train_bs if not CFG.debug else 20, 

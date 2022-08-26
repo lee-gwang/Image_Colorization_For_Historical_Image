@@ -52,7 +52,8 @@ def build_model(CFG, encoder, decoder):
             encoder_weights="imagenet",     # use `imagenet` pre-trained weights for encoder initialization
             in_channels=CFG.num_channel,                  # model input channels (1 for gray-scale images, 3 for RGB, etc.)
             classes=CFG.num_classes,        # model output channels (number of classes in your dataset)
-            activation='sigmoid',
+            activation=CFG.activation,
+
         )
     elif decoder == 'FPN':
         model = smp.FPN(
@@ -60,7 +61,7 @@ def build_model(CFG, encoder, decoder):
             encoder_weights="imagenet",     # use `imagenet` pre-trained weights for encoder initialization
             in_channels=CFG.num_channel,                  # model input channels (1 for gray-scale images, 3 for RGB, etc.)
             classes=CFG.num_classes,        # model output channels (number of classes in your dataset)
-            activation='sigmoid',
+            activation=CFG.activation,
         )
     elif decoder == 'DeepLabV3':
         model = smp.DeepLabV3(
@@ -68,7 +69,7 @@ def build_model(CFG, encoder, decoder):
             encoder_weights="imagenet",     # use `imagenet` pre-trained weights for encoder initialization
             in_channels=CFG.num_channel,                  # model input channels (1 for gray-scale images, 3 for RGB, etc.)
             classes=CFG.num_classes,        # model output channels (number of classes in your dataset)
-            activation='sigmoid',
+            activation=CFG.activation,
         )
         
     model = LABModel(model, CFG)

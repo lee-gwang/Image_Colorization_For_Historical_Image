@@ -6,23 +6,6 @@
 - inference 사진많으면 가끔 왜안되니..?
 
 
-<!-- ### Datasets
-- 6,996 video clips
-- 170,362 frames
-- Train 80% / Val 20%
-- GroupKFold
-
-## ActivityNet Data Path 
-
-```
-​```
-${ActivityNet}}
-├── 384(resized_size)
-|   └── XXXXX_frames
-|       └── xxxx.jpg
-|       └── ...
-​```
-``` -->
 
 ## Preprocess Script
 
@@ -37,6 +20,7 @@ python preprocess.py --data_path ./data/ffhd/ --size 1024 --fold 10 --depth 2
 # no resize
 python preprocess.py --data_path /home/data/colorization/street/ --fold 10 --depth 2
 #
+python preprocess.py --data ffhq_v2 --data_path /home/data/colorization/ffhq_else/ --size 1024 --fold 10 --depth 2
 ```
 
 ## Train Script
@@ -45,10 +29,42 @@ python preprocess.py --data_path /home/data/colorization/street/ --fold 10 --dep
 python train.py --dataset_path ./data/ffhq_v2/HR_768/train_10.csv --save_img -gpu 0,1,2,3 --backbone efficientnet-b1 --scheduler CosineAnnealingLR --epoch 50 -bs 128 -expc 0802_ffhq_v2_pretrained_noise
 python train.py --dataset_path ./data/ffhq_v2/HR_768/train_10.csv --save_img -gpu 0,1,2,3 --backbone efficientnet-b1 --scheduler CosineAnnealingLR --epoch 50 -bs 64 -expc 0802_ffhq_v2_pretrained_noise --pretrained ./saved_models/Unet-efficientnet-b1-0731_ffhd_else/fold0_best.pth 
 
+# 0802
 python train.py --dataset_path ./data/ffhq_v3/HR_768/train_10.csv --save_img -gpu 4,5,6,7 --backbone efficientnet-b1 --scheduler CosineAnnealingLR --epoch 50 -bs 64 -expc 0803_ffhq_v3_pretrained_noise2 --pretrained ./saved_models/Unet-efficientnet-b1-0802_ffhq_v2_pretrained_noise/fold0_best_e50.pth --val_iter 1
 
+# 0806 coarsedropout (no deepfashion2)
+python train.py --dataset_path ./data/ffhq_v2/HR_768/train_10.csv --save_img -gpu 4,5,6,7 --backbone efficientnet-b1 --scheduler CosineAnnealingLR --epoch 50 -bs 64 -expc 0806_ffhq_v2_pretrained_cutout --pretrained ./saved_models/Unet-efficientnet-b1-0803_ffhq_v3_pretrained_noise2/fold0_best_e50.pth --val_iter 1
 
+#0808 (768 to 1024 pretrained training)
+python train.py --dataset_path ./data/ffhq_v2/HR_1024/train_10.csv --save_img -gpu 4,5,6,7 --backbone efficientnet-b1 --scheduler CosineAnnealingLR --epoch 50 -bs 32 -expc 0808_ffhq_v2_pretrained_1024 --pretrained ./saved_models/Unet-efficientnet-b1-0806_ffhq_v2_pretrained_cutout/fold0_best_e47.pth --val_iter 1
 
+#0809 new aug (random resized crop)
+#  (resnet50)
+python train.py --dataset_path ./data/ffhq_v2/HR_768/train_10.csv --save_img -gpu 0,1,2,3 --backbone resnet50 --scheduler CosineAnnealingLR --epoch 50 -bs 64 -expc 0809_ffhq_v2_new_aug --val_iter 1
+
+# 0810 (random resized crop, pretrained)
+python train.py --dataset_path ./data/ffhq_v2/HR_768/train_10.csv --save_img -gpu 0,1,2,3 --backbone efficientnet-b1 --scheduler CosineAnnealingLR --epoch 50 -bs 64 -expc 0810_ffhq_v2_pretrained_rrc --pretrained ./saved_models/Unet-efficientnet-b1-0806_ffhq_v2_pretrained_cutout/fold0_best_e47.pth --val_iter 1 -lr 5e-5
+
+# 0811, activation tanh
+python train.py --dataset_path ./data/ffhq_v2/HR_768/train_10.csv --save_img -gpu 0,1,2,3 --backbone efficientnet-b1 --scheduler CosineAnnealingLR --epoch 50 -bs 64 -expc 0811_ffhqv2_activation_tanh --pretrained ./saved_models/Unet-efficientnet-b1-0806_ffhq_v2_pretrained_cutout/fold0_best_e47.pth --val_iter 1
+
+# 0814 (l2 loss, random resized crop, pretrained)
+python train.py --dataset_path ./data/ffhq_v2/HR_768/train_10.csv --save_img -gpu 4,5,6,7 --backbone efficientnet-b1 --scheduler CosineAnnealingLR --epoch 50 -bs 64 -expc 0814_ffhq_v2_L2loss_pretrained_rrc --pretrained ./saved_models/Unet-efficientnet-b1-0806_ffhq_v2_pretrained_cutout/fold0_best_e47.pth --loss mse --val_iter 1
+
+# 0817 (pretrained, + imagenet training)
+python temp_imagenet_train.py --dataset_path ./data/ffhq_v2/HR_768/train_10.csv --save_img -gpu 0,1,2,3 --backbone efficientnet-b1 --scheduler CosineAnnealingLR --epoch 12 -bs 64 -expc 0817_ffhq_v2_pretrained_imagenet_fuse --pretrained ./saved_models/Unet-efficientnet-b1-0806_ffhq_v2_pretrained_cutout/fold0_best_e47.pth --val_iter 1 -lr 5e-5
+
+# 0818 (pretrained, 384)
+python train.py --dataset_path ./data/ffhq_v2/HR_384/train_10.csv --save_img -gpu 4,5,6,7 --backbone efficientnet-b1 --scheduler CosineAnnealingLR --epoch 50 -bs 128 -expc 0818_ffhq_v2_pretrained --pretrained ./saved_models/Unet-efficientnet-b1-0806_ffhq_v2_pretrained_cutout/fold0_best_e47.pth --val_iter 1
+
+# 0820 (new, lab 새롭게 정의, tanh로 시도)
+python train2.py --dataset_path ./data/ffhq_v2/HR_768/train_10.csv --save_img -gpu 4,5,6,7 --backbone efficientnet-b1 --scheduler CosineAnnealingLR --epoch 50 -bs 64 -expc 0820_ffhqv2_newlab_tanh --pretrained ./saved_models/Unet-efficientnet-b1-0806_ffhq_v2_pretrained_cutout/fold0_best_e47.pth --activation tanh --val_iter 1
+
+# 0820 (fruits 추가)
+python train.py --dataset_path ./data/ffhq_v3/HR_768/train_10.csv --save_img -gpu 4,5,6,7 --backbone efficientnet-b1 --scheduler CosineAnnealingLR --epoch 50 -bs 64 -expc 0820_ffhqv3 --pretrained ./saved_models/Unet-efficientnet-b1-0806_ffhq_v2_pretrained_cutout/fold0_best_e47.pth --val_iter 1
+
+# 0826
+python train2.py --dataset_path ./data/ffhq_v4/HR_768/train_10.csv --save_img -gpu 4,5,6,7 --backbone efficientnet-b1 --scheduler CosineAnnealingLR --epoch 50 -bs 64 -expc 0825_ffhqv4_newlab_tanh --activation tanh --val_iter 1
 ```
 ## Validation
 ```bash
@@ -63,6 +79,40 @@ python inference.py --backbone efficientnet-b1 -gpu 0,1,2,3 --img_path ./data/co
 # 0803
 python inference_patch.py --backbone efficientnet-b1 --img_path /home/data/colorization/skt_sample/ --depth=1 -sm ./saved_models/Unet-efficientnet-b1-0803_ffhq_v3_pretrained_noise2/fold0_best_e9.pth -expc temp_power_ensemble --gpu=0,1 --image --patch
 
+#0808
+python inference_patch.py --backbone efficientnet-b1 --img_path /home/data/colorization/skt_sample/ --depth=1 -sm ./saved_models/Unet-efficientnet-b1-0808_ffhq_v2_pretrained_1024/fold0_best_e37.pth -expc 0808_ffhqv2_1024_e37_bright  --gpu=1,2 --image --patch
+
+# 0809 random resized crop
+python inference_patch.py --backbone resnet50 --img_path /home/data/colorization/skt_sample/ --depth=1 -sm ./saved_models/Unet-efficientnet-b1-0808_ffhq_v2_pretrained_1024/fold0_best_e37.pth -expc 0809   --gpu=4,5 --image --patch
+
+# 0810 rrc, b1, pretrained-retrain
+python inference_patch.py --backbone efficientnet-b1 --img_path /home/data/colorization/skt_test/ --depth=1 -sm ./saved_models/ -expc 0810-rrc   --gpu=6,7 --image --patch
+
+# 0818 384
+python inference_patch.py --backbone efficientnet-b1 --img_path /home/data/colorization/skt_sample/ --depth=1 -sm ./saved_models/Unet-efficientnet-b1-0818_ffhq_v2_pretrained/fold0_best_e23.pth -expc sample  --gpu=6,7 --image --patch
+
+# 0818 1024
+python inference_patch.py --backbone efficientnet-b1 --img_path /home/data/colorization/skt_test/ --depth=1 -sm ./saved_models/Unet-efficientnet-b1-0808_ffhq_v2_pretrained_1024/fold0_best_e47.pth -expc 1024  --gpu=2,3 --image --patch
+
+
+# 0820 new / pillow / new lab
+python inference_patch2.py --backbone efficientnet-b1 --img_path /home/data/colorization/skt_sample/ --depth=1 -sm  -expc new_lab  --gpu=1,3 --image --patch
+#0820 / skt test 2 (발표용 비공식)
+python inference_patch.py --backbone efficientnet-b1 --img_path /home/data/colorization/skt_test2/ --depth=1 -sm ./saved_models/Unet-efficientnet-b1-0806_ffhq_v2_pretrained_cutout/fold0_best_e47.pth -expc 0820_forppt   --gpu=2,3 --image --patch
+python inference_patch.py --backbone efficientnet-b1 --img_path /home/data/colorization/skt_test2/ --depth=1 -sm ./saved_models/Unet-efficientnet-b1-0820_ffhqv3/fold0_best_e2.pth -expc 0820_fruit_forppt --gpu=2,3 --image --patch
+
+# 0825 new / new lab /  ffhqv4
+python inference_patch2.py --backbone efficientnet-b1 --img_path /home/data/colorization/skt_test2/ --depth=1 -sm ./saved_models/Unet-efficientnet-b1-0825_ffhqv4_newlab_tanh/fold0_best_e20_psnr24.56.pth  -expc 0826_new_lab2  --gpu=0,1 --image --patch --activation tanh
+
+```
+
+## Best Inference
+```bash
+# best1
+python inference_patch.py --backbone efficientnet-b1 --img_path /home/data/colorization/skt_test/ --depth=1 -sm ./saved_models/ -expc 0810-rrc   --gpu=6,7 --image --patch
+
+# best2 (fruit 학습 후)
+python inference_patch2.py --backbone efficientnet-b1 --img_path /home/data/colorization/skt_test2/ --depth=1 -sm ./saved_models/Unet-efficientnet-b1-0825_ffhqv4_newlab_tanh/fold0_best_e20_psnr24.56.pth  -expc 0826_new_lab2  --gpu=0,1 --image --patch --activation tanh
 ```
 
 ## Visualize (Unet-efficientnetb0)

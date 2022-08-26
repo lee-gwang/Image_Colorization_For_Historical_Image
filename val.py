@@ -44,7 +44,7 @@ warnings.filterwarnings("ignore")
 import wandb
 import segmentation_models_pytorch as smp
 import math
-from dataloader import ImageNetDataset, ActivityDataset
+from dataloader import ActivityDataset
 from utils.utils import load_data, init_logger
 
 # model

@@ -1,3 +1,7 @@
+"""
+tanh / 0820 / pillow
+
+"""
 import os
 import argparse
 from unittest import result
@@ -82,6 +86,7 @@ from matplotlib.patches import Rectangle
 
 # Sklearn
 from sklearn.model_selection import StratifiedKFold, KFold, StratifiedGroupKFold
+from skimage import color
 
 # PyTorch 
 import torch
@@ -106,7 +111,7 @@ warnings.filterwarnings("ignore")
 import wandb
 import segmentation_models_pytorch as smp
 import math
-from dataloader import ActivityDataset
+from dataloader import ColorDataset
 from utils.utils import load_data, init_logger, set_seed
 
 # model
@@ -149,7 +154,24 @@ def loss_fn(CFG):
     elif CFG.loss == 'mse':
         loss = nn.MSELoss()
     return loss
+    
+def save_img(y_pred, comment='val'):
+    y_pred = y_pred.astype('uint8')#*255
+    os.makedirs(os.path.join(CFG.OUTPUT_DIR, comment),exist_ok=True)
+    for n, show_img in enumerate(y_pred):
+        cv2.imwrite(os.path.join(CFG.OUTPUT_DIR, comment, f'{n}.jpg'), show_img)
 
+def lab2rgb(L, ab):
+    """
+    L : range: [-1, 1], torch tensor
+    ab : range: [-1, 1], torch tensor
+    """
+    ab2 = ab * 100.0
+    L2 = (L + 1.0) * 50.0
+    Lab = np.concatenate([L2, ab2], axis=0)
+    Lab = np.transpose(Lab.astype(np.float32), (1, 2, 0))
+    rgb = color.lab2rgb(Lab) * 255
+    return rgb
 # ------------------------
 #  Val
 # ------------------------
@@ -177,12 +199,12 @@ def valid_one_epoch(model, dataloader, device):
     
     # size * scale만큼 이미지를 crop해서 scale만큼 downscale 한후 연산하고, 다시 scale만큼 upscale
 
-    # hp_list = [(4, 768, 740, 0.8, 0.3), (2, 768, 740, 0.8, 0.3), (5, 768, 700, 0.8, 0.1)]
+    hp_list = [(4, 768, 740, 0.8, 0.3), (2, 768, 740, 0.8, 0.3), (5, 768, 700, 0.8, 0.1)]
     # hp_list = [(4, 384, 300, 1, 0.0), (2, 384, 380, 1, 0.0), (3, 384, 380, 1, 0.0), (5, 384, 380, 1, 0.0)]
 
 
     # best
-    hp_list = [(4, 768, 740, 0.8, 0.3), (2, 768, 740, 0.8, 0.3), (5, 768, 700, 0.8, 0.1), (3, 768, 768, 0.8, 0.1)]
+    # hp_list = [(4, 768, 740, 0.8, 0.3), (2, 768, 740, 0.8, 0.3), (5, 768, 700, 0.8, 0.1), (3, 768, 768, 0.8, 0.1)]
 
     # hp_list = [(4, 768, 740, 0.8, 0.), (2, 768, 740, 0.8, 0.), (5, 768, 700, 0.8, 0.), (3, 768, 768, 0.8, 0.),
     #             (0.5, 768, 700, 0.8, 0.), (1, 384, 300, 0.8, 0.), (1, 512, 500, 0.8, 0.), (1, 768, 500, 0.8, 0.),
@@ -284,15 +306,8 @@ def valid_one_epoch(model, dataloader, device):
         # ensmeble
         # result_img = np.sum(ensemble_img, axis=0)/len(ensemble_img)
         result_img = np.sum(ensemble_img, axis=0)/len_weights
-
-        result_img = np.around(result_img*255).astype(np.uint8).transpose(1,2,0)
-        # result_img = np.around(result_img*255).transpose(1,2,0)
-
-        # result_img=result_img*255
-        # result_img[result_img>255] = 255
-        # result_img[result_img<0] = 0
-        # result_img = result_img.astype(np.uint8).transpose(1,2,0)
-
+        result_img = lab2rgb(result_img[[0],:,:], result_img[[1,2],:,:])
+        result_img = result_img.astype(np.uint8)
 
         results.append(result_img)
 
@@ -310,7 +325,7 @@ def run_inference(model, df, run, device):
     valid_df = df
 
     # new_aug 
-    valid_dataset = ActivityDataset(valid_df, type='patch_infer', label=False)
+    valid_dataset = ColorDataset(valid_df, type='patch_infer', label=False)
 
     valid_loader = DataLoader(valid_dataset, batch_size=CFG.valid_bs if not CFG.debug else 20, 
                               num_workers=CFG.num_workers, shuffle=False, pin_memory=True)
@@ -326,11 +341,15 @@ def run_inference(model, df, run, device):
                                                 )
 
     # true
+    # save_img(y_pred, comment='color')
+    # save_img(y_pred, comment='pred')
+    # save_img(y_pred, comment='colo')
+
     os.makedirs(os.path.join(CFG.OUTPUT_DIR, 'color'), exist_ok=True)
     os.makedirs(os.path.join(CFG.OUTPUT_DIR, 'pred'), exist_ok=True)
     os.makedirs(os.path.join(CFG.OUTPUT_DIR, 'gray'), exist_ok=True)
     for n, show_img in enumerate(y_pred):
-        show_img = cv2.cvtColor(show_img, cv2.COLOR_LAB2RGB)
+        # show_img = cv2.cvtColor(show_img, cv2.COLOR_LAB2RGB)
         cv2.imwrite(os.path.join(CFG.OUTPUT_DIR, f'pred/{n}.jpg'), show_img)
     for n, path_ in enumerate(valid_df['new_rgb_paths']):
         show_img = cv2.imread(path_)
@@ -338,8 +357,8 @@ def run_inference(model, df, run, device):
         # show_img = cv2.cvtColor(show_img, cv2.COLOR_BGR2RGB)
         cv2.imwrite(os.path.join(CFG.OUTPUT_DIR, f'color/{n}.jpg'), show_img)
     for n, show_img in enumerate(y_pred):
-        show_img = cv2.cvtColor(show_img, cv2.COLOR_LAB2RGB)
-        show_img = cv2.cvtColor(show_img, cv2.COLOR_RGB2GRAY)
+        # show_img = cv2.cvtColor(show_img, cv2.COLOR_LAB2RGB)
+        # show_img = cv2.cvtColor(show_img, cv2.COLOR_RGB2GRAY)
         cv2.imwrite(os.path.join(CFG.OUTPUT_DIR, f'gray/{n}.jpg'), show_img)
 
     return
