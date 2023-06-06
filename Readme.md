@@ -5,7 +5,7 @@
 
 코드는 크게 Automatic Colorization, Hint-based Colorization, Multi-modal Colorization으로 이루어져있습니다. Multi-modal Colrozation 코드를 통해 카카오채널에서 흑백이미지를 복원하는 챗봇까지 개발했습니다.
 - [[DEMO]](https://github.com/SaebyeolShin/Colorization_UI)
-- [[KAKAO CHANNEL]](http://pf.kakao.com/_mxgELxj)
+- [[KAKAO CHANNEL]](http://pf.kakao.com/_mxgELxj) (GCP 비용 문제로 현재는 운영 중단...)
 
 # Automatic Colorization
 <p align="center"><img src="./example/vis1.gif"></p>
