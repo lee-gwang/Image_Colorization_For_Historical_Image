@@ -1,4 +1,3 @@
-[Korean Ver.](./readme.md)
 # Image Colorization for Historical Image
 <p align="center"><img src="./example/many_people_nature.gif"></p>
 
