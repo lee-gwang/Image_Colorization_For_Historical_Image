@@ -35,8 +35,8 @@
 
 
 ## 6.25 참전 용사 이미지 복원
-<p align="center"><img src="./example/625_1.png"></p>
-<p align="center"><img src="./example/625_2.png"></p>
+<p align="center"><img src="./example/625_1.PNG"></p>
+<p align="center"><img src="./example/625_2.PNG"></p>
 
 SK텔레콤에서의 인턴을 마친 후, 조금 더 의미있는 곳에 기술을 적용해보고자 6.25 참전용사 분들의 이미지를 복원해보았습니다. 옛날 사진들에 노이즈가 너무 많아 추가적인 학습 테크닉이 필요했습니다. 본 코드에는 따로 공개하지 않았습니다.
 
