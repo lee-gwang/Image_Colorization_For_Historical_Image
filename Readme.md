@@ -1,5 +1,3 @@
-[English Ver.](./English_readme.md)
-
 # 흑백 이미지 복원을 위한 컬러화 기술 개발
 <p align="center"><img src="./example/many_people_nature.gif"></p>
 
