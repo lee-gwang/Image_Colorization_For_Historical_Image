@@ -1,4 +1,4 @@
-# 흑백 이미지 복원을 위한 컬러화 기술 개발
+# Image Colorization for Historical Image
 <p align="center"><img src="./example/many_people_nature.gif"></p>
 
 This is a project that utilizes deep learning technology to colorize black-and-white images with historical significance during the Gwangju democratization movement of May 18th. The project was developed with the support of SK Telecom as part of the AI Fellowship. Only a portion of the code has been made public, and if you are interested in more advanced techniques, please inquire via email. (icanlgh0016@gmail.com / toqufns@gmail.com)
@@ -26,7 +26,7 @@ The motivation behind developing this method was the technical implementation ch
 Therefore, we developed a method that enables image colorization in KakaoTalk using only "Text" as input. In the image provided, intermediate steps have been omitted, but the method uses CLIP to identify the desired regions and provides user guidance for those regions, allowing for "text-based image colorization."
 
 
-# 후속 프로젝트
+# Future Projects
 ## Image Color Transfer
 <p align="center"><img src="./example/transfer1.png"></p>
 <p align="center"><img src="./example/transfer2.png"></p>
@@ -35,7 +35,7 @@ Therefore, we developed a method that enables image colorization in KakaoTalk us
 
 Rather than simply restoring black-and-white images, we wondered if this technology could be used to convert certain regions of color images into different colors. To achieve "Recolorization" into different colors, only the user's guidance needs to be provided as input. Currently, the code is naively developed, and there are many issues regarding the training process that need to be addressed, which we plan to resolve in the future.
 
-## 6.25 참전 용사 이미지 복원
+## Restore images of the veterans in the Korean War
 <p align="center"><img src="./example/625_1.PNG"></p>
 <p align="center"><img src="./example/625_2.PNG"></p>
 
