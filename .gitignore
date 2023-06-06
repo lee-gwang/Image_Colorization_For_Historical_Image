@@ -1,8 +1,0 @@
-temp/
-.ipynb_checkpoints
-__pycache__/
-pp.ipynb
-saved_models/
-output_dirs/
-models/__pycache__/
-data/
