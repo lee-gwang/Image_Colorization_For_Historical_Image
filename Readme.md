@@ -45,3 +45,7 @@ SK텔레콤에서의 인턴을 마친 후, 조금 더 의미있는 곳에 기술
 - iColoriT (https://github.com/pmh9960/iColoriT)
 
     ( ViT를 사용해 Hint-based Colorization 코드가 깔끔하게 개발되어 있어 정말 많은 도움을 받았습니다, 또한 Demo를 만드는데 많은 도움을 받았습니다.)
+
+
+# TODO
+- 각각 코드에 학습 방법 readme 작성하기
