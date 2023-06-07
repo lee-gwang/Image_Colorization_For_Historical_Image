@@ -5,7 +5,7 @@ This is a project that utilizes deep learning technology to colorize black-and-w
 
 The code consists of three main parts: Automatic Colorization, Hint-based Colorization, and Multi-modal Colorization.
 - We developed Demo for Automatic Colorization and Hint-based Colorization [[DEMO]](https://github.com/SaebyeolShin/Colorization_UI)
-- Through the Multi-modal Colorization code, a Chatbot has been developed to restore black-and-white images on the Kakao Channel. [[KAKAO CHANNEL]](http://pf.kakao.com/_mxgELxj)
+- Through the Multi-modal Colorization code, a Chatbot has been developed to restore black-and-white images on the Kakao Channel. [[KAKAO CHANNEL]](http://pf.kakao.com/_mxgELxj) (Currently down due to GCP cost issues...)
 
 
 # Automatic Colorization
